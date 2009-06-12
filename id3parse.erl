@@ -1,4 +1,8 @@
+%% Links:
+%% http://www.id3.org/
+%% http://www.id3.org/Developer_Information
 %% http://www.id3.org/id3v2.4.0-structure
+%% http://www.id3.org/id3v2.4.0-frames
 
 -module(id3parse).
 
