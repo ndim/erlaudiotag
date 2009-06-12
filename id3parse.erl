@@ -4,14 +4,16 @@
 %% http://www.id3.org/id3v2.4.0-structure
 %% http://www.id3.org/id3v2.4.0-frames
 
+
 -module(id3parse).
+
 
 -export([test/1, test/0]).
 -export([parse_data/1]).
 
-parse_data(Data, Acc) ->
-    parse_header(Data, Acc).
 
+parse_data(Data, Acc) when is_binary(Data), is_list(Acc) ->
+    parse_header(Data, Acc).
 
 
 parse_header(<<
@@ -227,6 +229,7 @@ test([FileName|Tail], Acc) ->
 
 test(List) when is_list(List) ->
     test(List, []).
+
 
 test() ->
     test([]).
