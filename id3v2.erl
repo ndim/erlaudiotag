@@ -14,6 +14,8 @@
 %% BUG: Add human readable names of frames.
 %% BUG: Verify "unsynch"ed 32bit ints are read and written correctly.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% FIXME: Avoid encoding arbitrary strings from user data as atoms.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 -module(id3v2).
