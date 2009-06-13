@@ -247,15 +247,14 @@ parse_tag(<<
 	       Flags, TagFlags,
 	       RealSize
 	      ]),
-    {ExtHdr, Rest1}  = parse_extended_header(TagFlags, Rest),
+    <<
+     TagData:RealSize/binary,
+     AfterTag/binary
+     >> = Rest,
+    {ExtHdr, Rest1}  = parse_extended_header(TagFlags, TagData),
     {Frames, Rest2}  = parse_frame(TagFlags, Rest1, []),
     {PadSize, Rest3} = skip_padding(Rest2, 0),
-    {Footer, Rest4}  = parse_footer(TagFlags, Rest3),
-    case Rest4 of
-	<<>> -> ok;
-	_ -> io:format("CAUTION: Unparsed data at the end of ID3v2 tag!~n", []),
-	     dump_bytes(Rest4, "Unparsed data")
-    end,
+    {Footer, <<>>}  = parse_footer(TagFlags, Rest3),
     {#id3v2_tag{version=#id3v2_tag_version{major=VerMajor, minor=VerMinor},
 		flags=TagFlags,
 		size=RealSize,
@@ -264,7 +263,7 @@ parse_tag(<<
 		padding=#id3v2_padding{size=PadSize},
 		footer=Footer
 	       },
-     Rest4}.
+     AfterTag}.
 
 
 parse_extended_header(#id3v2_tag_flags{ext_hdr=false} = _TagFlags, Rest) ->
