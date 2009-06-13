@@ -1,6 +1,10 @@
 -include local.mk
 TEST_FILE ?= does-not-exist.mp3
 ERL_MODS = id3v2
+ERLC_FLAGS =
+ERLC_FLAGS += +report
+ERLC_FLAGS += +verbose
+# ERLC_FLAGS += +return
 
 ALL_BEAMS = $(foreach base,$(ERL_MODS),$(base).beam)
 
@@ -16,7 +20,7 @@ help:
 	@echo TEST_FILE=$(TEST_FILE)
 
 %.beam: %.erl
-	erlc $(ERLC_OPT) "$<"
+	erlc $(ERLC_FLAGS) "$<"
 
 id3parse-test.mp3: GNUmakefile $(ALL_BEAMS)
 	erl -noshell -s id3v2 test "$(TEST_FILE)" -s init stop
