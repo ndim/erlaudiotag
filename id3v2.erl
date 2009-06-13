@@ -204,6 +204,7 @@ dump_bytes(Bin, Msg) when is_binary(Bin) ->
 
 
 parse_file(FileName) ->
+    io:format("parse_file(\"~s\")~n", [FileName]),
     {ok, Data} = file:read_file(FileName),
     parse_data(Data).
 
