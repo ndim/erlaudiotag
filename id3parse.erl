@@ -3,6 +3,11 @@
 %% http://www.id3.org/Developer_Information
 %% http://www.id3.org/id3v2.4.0-structure
 %% http://www.id3.org/id3v2.4.0-frames
+%%
+%%
+%% BUG: Need proper handling of text encodings.
+%% BUG: Need to remove data sizes from records where the size is implied.
+%% BUG: Need to keep proper track of data sizes while rendering.
 
 
 -module(id3parse).
@@ -18,7 +23,7 @@
 -record(id3v2_tag,
 	{size, version, flags, ext_hdr=none, frames=[], footer=none}).
 
--record(id3v2_version,
+-record(id3v2_tag_version,
 	{major, minor}).
 
 -record(id3v2_footer,
@@ -110,7 +115,7 @@ parse_tag(<<
 	_ -> io:format("CAUTION: Unparsed data at the end of ID3v2 tag!~n", []),
 	     dump_bytes(Rest3, "Unparsed data")
     end,
-    #id3v2_tag{version=#id3v2_version{major=VerMajor, minor=VerMinor},
+    #id3v2_tag{version=#id3v2_tag_version{major=VerMajor, minor=VerMinor},
 	       flags=TagFlags,
 	       size=RealSize,
 	       ext_hdr=ExtHdr,
@@ -138,24 +143,47 @@ parse_extended_header(TagFlags,
      Rest}.
 
 
-unsynch(#id3v2_tag_flags{unsynch=true},
-	<<
-	 0:1, S3:7,
-	 0:1, S2:7,
-	 0:1, S1:7,
-	 0:1, S0:7
-	 >>) ->
-    (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0;
-unsynch(#id3v2_frame_flags{unsynch=true},
-	<<
-	 0:1, S3:7,
-	 0:1, S2:7,
-	 0:1, S1:7,
-	 0:1, S0:7
-	 >>) ->
-    (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0;
+unsynch_int(<<
+	     0:1, S3:7,
+	     0:1, S2:7,
+	     0:1, S1:7,
+	     0:1, S0:7
+	     >>) ->
+    (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0.
+
+
+unsynch(#id3v2_tag_flags{unsynch=true}, Bin) ->
+    unsynch_int(Bin);
+unsynch(#id3v2_frame_flags{unsynch=true}, Bin) ->
+    unsynch_int(Bin);
 unsynch(_, <<S:32/integer>>) ->
     S.
+
+
+shiftop(Val) ->
+    {Val band 16#7f, Val bsr 7}.
+
+
+ununsynch_int(Val) ->
+    {S0, R0} = shiftop(Val),
+    {S1, R1} = shiftop(R0),
+    {S2, R2} = shiftop(R1),
+    {S3, R3} = shiftop(R2),
+    0 = R3,
+    <<
+     0:1, S3:7,
+     0:1, S2:7,
+     0:1, S1:7,
+     0:1, S0:7
+     >>.
+
+
+ununsynch(#id3v2_tag_flags{unsynch=true}, Size) when is_integer(Size) ->
+    ununsynch_int(Size);
+ununsynch(#id3v2_frame_flags{unsynch=true}, Size) when is_integer(Size) ->
+    ununsynch_int(Size);
+ununsynch(_, Size) ->
+    <<Size:32/integer>>.
 
 
 first_bytes(Bin) when is_binary(Bin) ->
@@ -391,7 +419,7 @@ parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=true} = TagFlags,
 	      Rest/binary
 	      >>) ->
     {#id3v2_footer{flags=parse_tag_flags(Flags),
-		   version=#id3v2_version{major=VerMajor, minor=VerMinor}},
+		   version=#id3v2_tag_version{major=VerMajor, minor=VerMinor}},
      <<>>};
 parse_footer(_, <<>>) ->
     {undefined, <<>>};
@@ -409,17 +437,61 @@ parse_data(Data) ->
     parse_data(Data, []).
 
 
-
 render(#id3v2_tag{version=TagVersion,
 		  flags=TagFlags,
+		  size=Size,
 		  frames=Frames}) ->
-    moo.
+    [<<"ID3">>,
+     render(TagVersion),
+     render(TagFlags),
+     ununsynch(TagFlags, Size),
+     render(TagFlags, Frames)];
+render(#id3v2_tag_version{major=Major, minor=Minor}) ->
+    <<Major, Minor>>;
+render(#id3v2_tag_flags{}) ->
+    <<0>>. % FIXME: Render flags properly
+
+
+render(TagFlags, #id3v2_frame{type=Type, size=Size, flags=Flags, data=Data}) ->
+    [atom_to_frameid(Type),
+     ununsynch(TagFlags, Size),
+     render(TagFlags, Flags),
+     Data];
+render(TagFlags, #id3v2_apic_frame{type=Type, size=Size, flags=Flags,
+				   text_encoding=TextEncoding,
+				   description=Description,
+				   mime_type=MimeType,
+				   pic_type=PicType,
+				   imgdata=ImgData
+				  }) ->
+    [atom_to_frameid(Type),
+     ununsynch(TagFlags, Size),
+     render(TagFlags, Flags),
+     TextEncoding,
+     MimeType,0,
+     PicType,
+     Description,0,
+     ImgData];
+render(TagFlags, #id3v2_text_frame{type=Type, size=Size, flags=Flags,
+				   text_encoding=TextEncoding, text=Text}) ->
+    [atom_to_frameid(Type),
+     ununsynch(TagFlags, Size),
+     render(TagFlags, Flags),
+     <<TextEncoding>>,
+     Text
+    ];
+render(TagFlags, #id3v2_frame_flags{}) ->
+    <<0,0>>; % FIXME: Render flags properly
+render(TagFlags, List) when is_list(List) ->
+    [ render(TagFlags, Item) || Item <- List ].
 
 
 test_item(FileName) ->
     {ok, Data} = file:read_file(FileName),
     P = parse_data(Data),
     io:format("~s:~n  ~P~n", [FileName, P,length(P#id3v2_tag.frames)+50]),
+    R = render(P),
+    file:write_file("id3parse-test.mp3", R),
     P.
 
 
