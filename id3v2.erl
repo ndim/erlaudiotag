@@ -253,14 +253,15 @@ parse_tag(<<
 	_ -> io:format("CAUTION: Unparsed data at the end of ID3v2 tag!~n", []),
 	     dump_bytes(Rest4, "Unparsed data")
     end,
-    #id3v2_tag{version=#id3v2_tag_version{major=VerMajor, minor=VerMinor},
-	       flags=TagFlags,
-	       size=RealSize,
-	       ext_hdr=ExtHdr,
-	       frames=Frames,
-	       padding=#id3v2_padding{size=PadSize},
-	       footer=Footer
-	      }.
+    {#id3v2_tag{version=#id3v2_tag_version{major=VerMajor, minor=VerMinor},
+		flags=TagFlags,
+		size=RealSize,
+		ext_hdr=ExtHdr,
+		frames=Frames,
+		padding=#id3v2_padding{size=PadSize},
+		footer=Footer
+	       },
+     Rest4}.
 
 
 parse_extended_header(#id3v2_tag_flags{ext_hdr=false} = _TagFlags, Rest) ->
@@ -631,12 +632,12 @@ render(TagFlags, List) when is_list(List) ->
 
 
 test_item(FileName) ->
-    P = parse_file(FileName),
+    {P, Rest} = parse_file(FileName),
     io:format("~s:~n  ~P~n", [FileName, P,length(P#id3v2_tag.frames)+50]),
     msleep(1000),
     R = render(P),
     msleep(1000),
-    file:write_file("id3parse-test.mp3", R),
+    file:write_file("id3parse-test.mp3", [R,Rest]),
     P.
 
 
