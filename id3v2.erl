@@ -107,28 +107,29 @@ int_to_bool(1) ->
     true.
 
 
-unsynch_int(<<
+unsynch_int(true,
+	    <<
 	     0:1, S3:7,
 	     0:1, S2:7,
 	     0:1, S1:7,
 	     0:1, S0:7
 	     >>) ->
-    (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0.
-
-
-unsynch(#id3v2_tag_flags{unsynch=true}, Bin) ->
-    unsynch_int(Bin);
-unsynch(#id3v2_frame_flags{unsynch=true}, Bin) ->
-    unsynch_int(Bin);
-unsynch(_, <<S:32/integer>>) ->
+    (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0;
+unsynch_int(false, <<S:32/integer>>) ->
     S.
+
+
+unsynch(#id3v2_tag_flags{unsynch=Bool}, Bin) ->
+    unsynch_int(Bool, Bin);
+unsynch(#id3v2_frame_flags{unsynch=Bool}, Bin) ->
+    unsynch_int(Bool, Bin).
 
 
 shiftop(Val) ->
     {Val band 16#7f, Val bsr 7}.
 
 
-ununsynch_int(Val) ->
+ununsynch_int(true, Val) ->
     {S0, R0} = shiftop(Val),
     {S1, R1} = shiftop(R0),
     {S2, R2} = shiftop(R1),
@@ -139,15 +140,15 @@ ununsynch_int(Val) ->
      0:1, S2:7,
      0:1, S1:7,
      0:1, S0:7
-     >>.
+     >>;
+ununsynch_int(false, Val) ->
+    <<Val:32/integer>>.
 
 
-ununsynch(#id3v2_tag_flags{unsynch=true}, Size) when is_integer(Size) ->
-    ununsynch_int(Size);
-ununsynch(#id3v2_frame_flags{unsynch=true}, Size) when is_integer(Size) ->
-    ununsynch_int(Size);
-ununsynch(_, Size) ->
-    <<Size:32/integer>>.
+ununsynch(#id3v2_tag_flags{unsynch=Bool}, Size) when is_integer(Size) ->
+    ununsynch_int(Bool, Size);
+ununsynch(#id3v2_frame_flags{unsynch=Bool}, Size) when is_integer(Size) ->
+    ununsynch_int(Bool, Size).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -233,7 +234,7 @@ parse_tag(<<
 	   Rest/binary
 	   >>) ->
     TagFlags = parse_tag_flags(Flags),
-    RealSize = unsynch(TagFlags#id3v2_tag_flags.unsynch, Size),
+    RealSize = unsynch_int(true, Size), % FIXME: WHY true, why not TagFlags?
     io:format("ID3 header: "
 	      "ver:id3v2.~w.~w "
 	      "flags:~w (~w) "
@@ -532,7 +533,7 @@ render(#id3v2_tag{version=TagVersion,
     [<<"ID3">>,
      render(TagVersion),
      render(TagFlags),
-     ununsynch_int(Size), % TagFlags, Size),
+     ununsynch_int(true, Size),  % FIXME: WHY true, why not TagFlags?
      RFrames,
      RPadding,
      RFooter
