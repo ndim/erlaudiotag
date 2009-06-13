@@ -7,7 +7,12 @@ ERLC_FLAGS += +report
 ERLC_FLAGS += +verbose
 # ERLC_FLAGS += +return
 
+CLEAN_FILES =
+CLEAN_FILES += *~
+CLEAN_FILES += erl_crash.dump
+
 ALL_BEAMS = $(foreach base,$(ERL_MODS),$(base).beam)
+CLEAN_FILES += $(ALL_BEAMS)
 
 .PHONY: check
 check: all id3parse-test.dump orig.dump
@@ -24,11 +29,18 @@ help:
 %.beam: %.erl
 	erlc $(ERLC_FLAGS) "$<"
 
+CLEAN_FILES += id3parse-test.mp3
 id3parse-test.mp3: GNUmakefile $(ALL_BEAMS)
 	erl -noshell -s id3v2 test "$(TEST_FILE)" -s init stop
 
+CLEAN_FILES += id3parse-test.dump
 id3parse-test.dump: id3parse-test.mp3
 	hexdump -C "$<" | sed '/00 00 00 ff fb/q' > "$@"
 
+CLEAN_FILES += orig.dump
 orig.dump: GNUmakefile
 	hexdump -C "$(TEST_FILE)" | sed '/00 00 00 ff fb/q' > "$@"
+
+.PHONY: clean
+clean:
+	rm -f $(CLEAN_FILES)
