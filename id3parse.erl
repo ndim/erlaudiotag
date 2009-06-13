@@ -58,17 +58,19 @@
 	}).
 
 -record(id3v2_frame,
-	{type, name, size, flags,
-	 data}).
+	{id, name, flags,
+	 size, data}).
 
 -record(id3v2_text_frame,
-	{type, name, size, flags,
+	{id, name, flags,
+	 size,
 	 text_encoding, text}).
 
 -record(id3v2_apic_frame,
-	{type, name, size, flags,
+	{id, name, flags,
+	 size,
 	 text_encoding, description,
-	 mime_type, pic_type, imgdata}).
+	 mime_type, pic_type, img_data}).
 
 
 parse_data(Data, Acc) when is_binary(Data), is_list(Acc) ->
@@ -344,7 +346,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 		<<"TXXX">> = FrameID, FrameSize, FrameFlags, Data, Rest, Acc) ->
     parse_frame(TagFlags,
 		Rest,
-		[#id3v2_frame{type=frameid_atom(FrameID),
+		[#id3v2_frame{id=frameid_atom(FrameID),
 			      name=frameid_name(FrameID),
 			      size=FrameSize,
 			      flags=FrameFlags,
@@ -367,7 +369,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
     io:format("   Content: ~p~n", [text_content(Text)]),
     parse_frame(TagFlags,
 		Rest,
-		[#id3v2_text_frame{type=frameid_atom(FrameID),
+		[#id3v2_text_frame{id=frameid_atom(FrameID),
 				   name=frameid_name(FrameID),
 				   size=FrameSize,
 				   flags=FrameFlags,
@@ -403,7 +405,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 	      ]),
     parse_frame(TagFlags,
 		Rest,
-		[#id3v2_apic_frame{type=frameid_atom(FrameID),
+		[#id3v2_apic_frame{id=frameid_atom(FrameID),
 				   name=frameid_name(FrameID),
 				   size=FrameSize,
 				   flags=FrameFlags,
@@ -411,7 +413,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 				   description=Description,
 				   mime_type=MimeType,
 				   pic_type=PictureType,
-				   imgdata=ImgData}|Acc]);
+				   img_data=ImgData}|Acc]);
 parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 		FrameFlags,
 		<<T0:8/integer,T1:8/integer,T2:8/integer,T3:8/integer>>=FrameID,
@@ -423,7 +425,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
        ->
     parse_frame(TagFlags,
 		Rest,
-		[#id3v2_frame{type=frameid_atom(FrameID),
+		[#id3v2_frame{id=frameid_atom(FrameID),
 			      name=frameid_name(FrameID),
 			      size=FrameSize,
 			      flags=FrameFlags,
@@ -503,19 +505,19 @@ render(TagFlags, #id3v2_padding{size=0}) ->
     [];
 render(TagFlags, #id3v2_padding{size=Size}) ->
     list_to_binary([ 0 || _ <- lists:seq(1,Size) ]);
-render(TagFlags, #id3v2_frame{type=Type, size=Size, flags=Flags, data=Data}) ->
-    [atom_to_frameid(Type),
+render(TagFlags, #id3v2_frame{id=ID, size=Size, flags=Flags, data=Data}) ->
+    [atom_to_frameid(ID),
      ununsynch(TagFlags, Size),
      render(TagFlags, Flags),
      Data];
-render(TagFlags, #id3v2_apic_frame{type=Type, size=Size, flags=Flags,
+render(TagFlags, #id3v2_apic_frame{id=ID, size=Size, flags=Flags,
 				   text_encoding=TextEncoding,
 				   description=Description,
 				   mime_type=MimeType,
 				   pic_type=PicType,
-				   imgdata=ImgData
+				   img_data=ImgData
 				  }) ->
-    [atom_to_frameid(Type),
+    [atom_to_frameid(ID),
      ununsynch(TagFlags, Size),
      render(TagFlags, Flags),
      TextEncoding,
@@ -523,9 +525,9 @@ render(TagFlags, #id3v2_apic_frame{type=Type, size=Size, flags=Flags,
      PicType,
      Description,0,
      ImgData];
-render(TagFlags, #id3v2_text_frame{type=Type, size=Size, flags=Flags,
+render(TagFlags, #id3v2_text_frame{id=ID, size=Size, flags=Flags,
 				   text_encoding=TextEncoding, text=Text}) ->
-    [atom_to_frameid(Type),
+    [atom_to_frameid(ID),
      ununsynch(TagFlags, Size),
      render(TagFlags, Flags),
      <<TextEncoding>>,
