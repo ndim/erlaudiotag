@@ -8,6 +8,7 @@
 %% BUG: Need proper handling of text encodings.
 %% BUG: Need to remove data sizes from records where the size is implied.
 %% BUG: Need to keep proper track of data sizes while rendering.
+%% BUG: Add human readable names of frames.
 
 
 -module(id3parse).
@@ -17,6 +18,7 @@
 -export([parse_data/1]).
 
 
+-define(TAG_TABLE, id3_frame_ids).
 -define(BYTE_COUNT, 64).
 
 
@@ -48,15 +50,15 @@
 	}).
 
 -record(id3v2_frame,
-	{type, size, flags,
+	{type, name, size, flags,
 	 data}).
 
 -record(id3v2_text_frame,
-	{type, size, flags,
+	{type, name, size, flags,
 	 text_encoding, text}).
 
 -record(id3v2_apic_frame,
-	{type, size, flags,
+	{type, name, size, flags,
 	 text_encoding, description,
 	 mime_type, pic_type, imgdata}).
 
@@ -326,6 +328,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
     parse_frame(TagFlags,
 		Rest,
 		[#id3v2_frame{type=frameid_atom(FrameID),
+			      name=frameid_name(FrameID),
 			      size=FrameSize,
 			      flags=FrameFlags,
 			      data=Data}
@@ -348,6 +351,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
     parse_frame(TagFlags,
 		Rest,
 		[#id3v2_text_frame{type=frameid_atom(FrameID),
+				   name=frameid_name(FrameID),
 				   size=FrameSize,
 				   flags=FrameFlags,
 				   text_encoding=TextEncoding,
@@ -383,6 +387,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
     parse_frame(TagFlags,
 		Rest,
 		[#id3v2_apic_frame{type=frameid_atom(FrameID),
+				   name=frameid_name(FrameID),
 				   size=FrameSize,
 				   flags=FrameFlags,
 				   text_encoding=TextEncoding,
@@ -402,6 +407,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
     parse_frame(TagFlags,
 		Rest,
 		[#id3v2_frame{type=frameid_atom(FrameID),
+			      name=frameid_name(FrameID),
 			      size=FrameSize,
 			      flags=FrameFlags,
 			      data=Data}|Acc]).
@@ -507,3 +513,26 @@ test(List) when is_list(List) ->
 
 test() ->
     test([]).
+
+
+frameid_name(FrameID) when is_atom(FrameID) ->
+    frameid_name(atom_to_list(FrameID));
+frameid_name(FrameID) when is_binary(FrameID) ->
+    frameid_name(binary_to_list(FrameID));
+frameid_name(FrameID) when is_list(FrameID) ->
+    case ets:info(?TAG_TABLE) of
+	undefined -> start();
+	_ -> ok
+    end,
+    case ets:lookup(?TAG_TABLE, FrameID) of
+	[]                 -> FrameID;
+	[{FrameID, Value}] -> Value
+    end.
+
+
+start() ->
+    ets:new(?TAG_TABLE, [set, protected, named_table]),
+    ets:insert(?TAG_TABLE, {"TIT1", "Content Group Description"}),
+    ets:insert(?TAG_TABLE, {"TIT2", "Title/songname/content description"}),
+    ets:insert(?TAG_TABLE, {"TIT3", "Subtitle/Description refinement"}),
+    ok.
