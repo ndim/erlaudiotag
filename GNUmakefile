@@ -10,7 +10,8 @@ ALL_BEAMS = $(foreach base,$(ERL_MODS),$(base).beam)
 
 .PHONY: check
 check: all id3parse-test.dump orig.dump
-	colordiff -u orig.dump id3parse-test.dump | less -r
+	cmp id3parse-test.dump orig.dump || \
+		colordiff -u orig.dump id3parse-test.dump | less -r
 
 .PHONY: all
 all: $(ALL_BEAMS)
