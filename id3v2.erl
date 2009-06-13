@@ -255,7 +255,8 @@ parse_tag(<<
     {Frames, Rest2}  = parse_frame(TagFlags, Rest1, []),
     {PadSize, Rest3} = skip_padding(Rest2, 0),
     {Footer, <<>>}  = parse_footer(TagFlags, Rest3),
-    {#id3v2_tag{version=#id3v2_tag_version{major=VerMajor, minor=VerMinor},
+    {ok,
+     #id3v2_tag{version=#id3v2_tag_version{major=VerMajor, minor=VerMinor},
 		flags=TagFlags,
 		size=RealSize,
 		ext_hdr=ExtHdr,
@@ -263,7 +264,9 @@ parse_tag(<<
 		padding=#id3v2_padding{size=PadSize},
 		footer=Footer
 	       },
-     AfterTag}.
+     AfterTag};
+parse_tag(Bin) when is_binary(Bin) ->
+    {error, no_id3v2_tag, Bin}.
 
 
 parse_extended_header(#id3v2_tag_flags{ext_hdr=false} = _TagFlags, Rest) ->
@@ -634,13 +637,17 @@ render(TagFlags, List) when is_list(List) ->
 
 
 test_item(FileName) ->
-    {P, Rest} = parse_file(FileName),
-    io:format("~s:~n  ~P~n", [FileName, P,length(P#id3v2_tag.frames)+50]),
-    msleep(1000),
-    R = render(P),
-    msleep(1000),
-    file:write_file("id3parse-test.mp3", [R,Rest]),
-    P.
+    case parse_file(FileName) of
+	{ok, P, Rest} ->
+	    io:format("~s:~n  ~P~n", [FileName, P,length(P#id3v2_tag.frames)+50]),
+	    R = render(P),
+	    file:write_file("id3parse-test.mp3", [R,Rest]),
+	    P;
+	{error, Error, Data} ->
+	    io:format("~s:~n  ~s~n  ~P~n",
+		      [FileName, Error, Data, 50]),
+	    {error, Error}
+    end.
 
 
 test([], Acc) ->
