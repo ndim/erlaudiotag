@@ -12,6 +12,9 @@
 -export([parse_data/1]).
 
 
+-define(BYTE_COUNT, 64).
+
+
 parse_data(Data, Acc) when is_binary(Data), is_list(Acc) ->
     parse_header(Data, Acc).
 
@@ -100,6 +103,39 @@ unsynch(false, <<S:32/integer>>) ->
     S.
 
 
+first_bytes(Bin) when is_binary(Bin) ->
+    {FirstBytes, _} = split_binary(Bin, ?BYTE_COUNT),
+    FirstBytes.
+
+last_bytes(Bin) when is_binary(Bin) ->
+    {_, LastBytes} = split_binary(Bin, size(Bin) - ?BYTE_COUNT),
+    LastBytes.
+
+shorten_bytes(Bin) when is_binary(Bin), size(Bin) > 2*?BYTE_COUNT ->
+    {first_bytes(Bin), last_bytes(Bin)};
+shorten_bytes(Bin) when is_binary(Bin) ->
+    Bin.
+
+dump_bytes(Bin, Msg) when is_binary(Bin) ->
+    case Msg of
+	none -> io:format("  Byte dump:~n", []);
+	_ ->    io:format("  Byte dump (~s):~n", [Msg])
+    end,
+    io:format("    Size: ~w~n", [size(Bin)]),
+    case shorten_bytes(Bin) of
+	{F,L} ->
+	    io:format("    Data: ~p~n"
+		      "          ...~n"
+		      "          ~p~n",
+		      [F,L]);
+	Bin ->
+	    io:format("    Data: ~p~s~n", [Bin])
+    end.
+
+dump_bytes(Bin) when is_binary(Bin) ->
+    dump_bytes(Bin, none).
+
+
 parse_frame(Unsync,
 	    <<0,0,0,0, Rest/binary>>, Acc) ->
     parse_frame(Unsync, Rest, Acc);
@@ -110,16 +146,14 @@ parse_frame(Unsync,
 	     FrameFlags:2/binary,
 	     Rest/binary
 	     >>, Acc) ->
-    {FirstFewBytes, _} = split_binary(Rest, 40),
     RealSize = unsynch(Unsync, FrameSize),
     io:format("frame id    (raw): ~w (~s)~n"
 	      "frame size  (raw): ~w (~w)~n"
-	      "frame flags (raw): ~w~n"
-	      "frame data  (raw): ~w...~n",
+	      "frame flags (raw): ~w~n",
 	      [FrameID, binary_to_list(FrameID),
 	       FrameSize, RealSize,
-	       FrameFlags,
-	       FirstFewBytes]),
+	       FrameFlags]),
+    dump_bytes(Rest, "Frame data"),
     <<
      0:1,
      FrameTagAlterDiscard:1,
@@ -190,6 +224,32 @@ parse_frame_int(Unsync,
 	       TextEncoding]),
     io:format("   Content: ~p~n", [text_content(Text)]),
     parse_frame(Unsync, Rest, [{text_frame, FrameID, FrameSize, FrameFlags, Data}|Acc]);
+parse_frame_int(Unsync, <<"APIC">> = FrameID,
+		FrameSize, FrameFlags,
+		<<
+		 TextEncoding:8/integer,
+		 Data/binary
+		 >>,
+		Rest, Acc) ->
+    dump_bytes(Data, "Data"),
+    {MimeType, Data1} = text_content_int(Data),
+    dump_bytes(Data1, "Data1"),
+    <<PictureType:8/integer, Data2/binary>> = Data1,
+    dump_bytes(Data2, "Data2"),
+    {Description, ImgData} = text_content_int(Data2),
+    dump_bytes(ImgData, "ImgData"),
+    dump_bytes(Rest, "Rest"),
+    io:format("  APIC tag:      ~s~n"
+	      "    TextEnc:     ~w~n"
+	      "    MIMEType:    ~s~n"
+	      "    PictureType: ~w~n",
+	      [binary_to_list(FrameID),
+	       TextEncoding,
+	       MimeType,
+	       PictureType
+	      ]),
+    parse_frame(Unsync, Rest,
+		[{apic_frame, FrameID, FrameSize, FrameFlags, Data}|Acc]);
 parse_frame_int(Unsync,
 		<<T0:8/integer,T1:8/integer,T2:8/integer,T3:8/integer>>=FrameID,
 		FrameSize, FrameFlags, Data, Rest, Acc)
@@ -198,7 +258,8 @@ parse_frame_int(Unsync,
        ($0 =< T2), (T2 =< $Z),
        ($0 =< T3), (T3 =< $Z)
        ->
-    parse_frame(Unsync, Rest, [{generic_frame, FrameID, FrameSize, FrameFlags, Data}|Acc]).
+    parse_frame(Unsync, Rest,
+		[{generic_frame, FrameID, FrameSize, FrameFlags, Data}|Acc]).
 
 
 parse_footer(<<
