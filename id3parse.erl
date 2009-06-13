@@ -246,19 +246,19 @@ parse_frame_flags(
    FrameTagAlterDiscard:1,
    FrameFileAlterDiscard:1,
    FrameReadOnly:1,
-   
+
    0:1, 0:1, 0:1, 0:1,
-   
+
    0:1,
    FrameGroupingIdentity:1,
    0:1,
    0:1,
-   
+
    FrameCompressed:1,
    FrameEncrypted:1,
    FrameUnsynch:1,
    FrameDataLengthIndicator:1
-   
+
    >>) ->
     #id3v2_frame_flags
 		   {tag_alter_discard=int_to_bool(FrameTagAlterDiscard),
