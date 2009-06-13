@@ -1,14 +1,18 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Links:
 %% http://www.id3.org/
 %% http://www.id3.org/Developer_Information
 %% http://www.id3.org/id3v2.4.0-structure
 %% http://www.id3.org/id3v2.4.0-frames
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
 %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% BUG: Need proper handling of text encodings.
 %% BUG: Need to remove data sizes from records where the size is implied.
 %% BUG: Need to keep proper track of data sizes while rendering.
 %% BUG: Add human readable names of frames.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 -module(id3parse).
@@ -18,8 +22,18 @@
 -export([parse_data/1]).
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Constants
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 -define(TAG_TABLE, id3_frame_ids).
 -define(BYTE_COUNT, 64).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Parse result record definitions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 -record(id3v2_tag,
@@ -73,8 +87,15 @@
 	 mime_type, pic_type, img_data}).
 
 
-parse_data(Data, Acc) when is_binary(Data), is_list(Acc) ->
-    parse_tag(Data, Acc).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Helper Functions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+bool_to_int(true) ->
+    1;
+bool_to_int(false) ->
+    0.
 
 
 int_to_bool(0) ->
@@ -83,11 +104,104 @@ int_to_bool(1) ->
     true.
 
 
+unsynch_int(<<
+	     0:1, S3:7,
+	     0:1, S2:7,
+	     0:1, S1:7,
+	     0:1, S0:7
+	     >>) ->
+    (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0.
+
+
+unsynch(#id3v2_tag_flags{unsynch=true}, Bin) ->
+    unsynch_int(Bin);
+unsynch(#id3v2_frame_flags{unsynch=true}, Bin) ->
+    unsynch_int(Bin);
+unsynch(_, <<S:32/integer>>) ->
+    S.
+
+
+shiftop(Val) ->
+    {Val band 16#7f, Val bsr 7}.
+
+
+ununsynch_int(Val) ->
+    {S0, R0} = shiftop(Val),
+    {S1, R1} = shiftop(R0),
+    {S2, R2} = shiftop(R1),
+    {S3, R3} = shiftop(R2),
+    0 = R3,
+    <<
+     0:1, S3:7,
+     0:1, S2:7,
+     0:1, S1:7,
+     0:1, S0:7
+     >>.
+
+
+ununsynch(#id3v2_tag_flags{unsynch=true}, Size) when is_integer(Size) ->
+    ununsynch_int(Size);
+ununsynch(#id3v2_frame_flags{unsynch=true}, Size) when is_integer(Size) ->
+    ununsynch_int(Size);
+ununsynch(_, Size) ->
+    <<Size:32/integer>>.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Debugging Aids
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 msleep(MSec) ->
     receive
     after MSec ->
 	    ok
     end.
+
+
+first_bytes(Bin) when is_binary(Bin) ->
+    {FirstBytes, _} = split_binary(Bin, ?BYTE_COUNT),
+    FirstBytes.
+
+
+last_bytes(Bin) when is_binary(Bin) ->
+    {_, LastBytes} = split_binary(Bin, size(Bin) - ?BYTE_COUNT),
+    LastBytes.
+
+
+shorten_bytes(Bin) when is_binary(Bin), size(Bin) > 2*?BYTE_COUNT ->
+    {first_bytes(Bin), last_bytes(Bin)};
+shorten_bytes(Bin) when is_binary(Bin) ->
+    Bin.
+
+
+dump_bytes(Bin, Msg) when is_binary(Bin) ->
+    case Msg of
+	none -> io:format("  Byte dump:~n", []);
+	_ ->    io:format("  Byte dump (~s):~n", [Msg])
+    end,
+    io:format("    Size: ~w~n", [size(Bin)]),
+    case shorten_bytes(Bin) of
+	{F,L} ->
+	    io:format("    Data: ~p~n"
+		      "          ...~n"
+		      "          ~p~n",
+		      [F,L]);
+	Bin ->
+	    io:format("    Data: ~p~n", [Bin])
+    end.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Parse ID3v2 tags from file
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+parse_data(Data, Acc) when is_binary(Data), is_list(Acc) ->
+    parse_tag(Data, Acc).
+
+parse_data(Data) ->
+    parse_data(Data, []).
 
 
 parse_tag_flags(<<
@@ -162,82 +276,6 @@ parse_extended_header(TagFlags,
       FlagByteCount,
       ExtendedFlags},
      Rest}.
-
-
-unsynch_int(<<
-	     0:1, S3:7,
-	     0:1, S2:7,
-	     0:1, S1:7,
-	     0:1, S0:7
-	     >>) ->
-    (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0.
-
-
-unsynch(#id3v2_tag_flags{unsynch=true}, Bin) ->
-    unsynch_int(Bin);
-unsynch(#id3v2_frame_flags{unsynch=true}, Bin) ->
-    unsynch_int(Bin);
-unsynch(_, <<S:32/integer>>) ->
-    S.
-
-
-shiftop(Val) ->
-    {Val band 16#7f, Val bsr 7}.
-
-
-ununsynch_int(Val) ->
-    {S0, R0} = shiftop(Val),
-    {S1, R1} = shiftop(R0),
-    {S2, R2} = shiftop(R1),
-    {S3, R3} = shiftop(R2),
-    0 = R3,
-    <<
-     0:1, S3:7,
-     0:1, S2:7,
-     0:1, S1:7,
-     0:1, S0:7
-     >>.
-
-
-ununsynch(#id3v2_tag_flags{unsynch=true}, Size) when is_integer(Size) ->
-    ununsynch_int(Size);
-ununsynch(#id3v2_frame_flags{unsynch=true}, Size) when is_integer(Size) ->
-    ununsynch_int(Size);
-ununsynch(_, Size) ->
-    <<Size:32/integer>>.
-
-
-first_bytes(Bin) when is_binary(Bin) ->
-    {FirstBytes, _} = split_binary(Bin, ?BYTE_COUNT),
-    FirstBytes.
-
-
-last_bytes(Bin) when is_binary(Bin) ->
-    {_, LastBytes} = split_binary(Bin, size(Bin) - ?BYTE_COUNT),
-    LastBytes.
-
-
-shorten_bytes(Bin) when is_binary(Bin), size(Bin) > 2*?BYTE_COUNT ->
-    {first_bytes(Bin), last_bytes(Bin)};
-shorten_bytes(Bin) when is_binary(Bin) ->
-    Bin.
-
-
-dump_bytes(Bin, Msg) when is_binary(Bin) ->
-    case Msg of
-	none -> io:format("  Byte dump:~n", []);
-	_ ->    io:format("  Byte dump (~s):~n", [Msg])
-    end,
-    io:format("    Size: ~w~n", [size(Bin)]),
-    case shorten_bytes(Bin) of
-	{F,L} ->
-	    io:format("    Data: ~p~n"
-		      "          ...~n"
-		      "          ~p~n",
-		      [F,L]);
-	Bin ->
-	    io:format("    Data: ~p~n", [Bin])
-    end.
 
 
 parse_frame_flags(
@@ -460,8 +498,9 @@ parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
     {undefined, Bin}.
 
 
-parse_data(Data) ->
-    parse_data(Data, []).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Rendering ID3v2 tags to file
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 render(#id3v2_tag{version=TagVersion,
@@ -491,12 +530,6 @@ render(F) when is_record(F, id3v2_tag_flags)->
      0:1,
      0:1
      >>.
-
-
-bool_to_int(true) ->
-    1;
-bool_to_int(false) ->
-    0.
 
 
 render(TagFlags, undefined) ->
@@ -556,6 +589,11 @@ render(TagFlags, List) when is_list(List) ->
     [ render(TagFlags, Item) || Item <- List ].
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Unit Test
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 test_item(FileName) ->
     {ok, Data} = file:read_file(FileName),
     P = parse_data(Data),
@@ -579,6 +617,11 @@ test(List) when is_list(List) ->
 
 test() ->
     test([]).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Frame ID Name Database
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 frameid_name(FrameID) when is_atom(FrameID) ->
