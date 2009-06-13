@@ -11,6 +11,10 @@ check: all id3parse-test.dump orig.dump
 .PHONY: all
 all: $(ALL_BEAMS)
 
+.PHONY: help
+help:
+	@echo TEST_FILE=$(TEST_FILE)
+
 %.beam: %.erl
 	erlc $(ERLC_OPT) "$<"
 
