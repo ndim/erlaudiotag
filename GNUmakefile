@@ -2,6 +2,7 @@
 TEST_FILE ?= does-not-exist.mp3
 ERL_MODS = id3v2
 ERLC_FLAGS =
+ERLC_FLAGS += +debug_info
 ERLC_FLAGS += +report
 ERLC_FLAGS += +verbose
 # ERLC_FLAGS += +return
