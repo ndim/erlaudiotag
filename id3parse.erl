@@ -21,6 +21,9 @@
 -record(id3v2_version,
 	{major, minor}).
 
+-record(id3v2_footer,
+	{version, flags}).
+
 -record(id3v2_tag_flags,
 	{unsynch=false,
 	 ext_hdr=false,
@@ -54,7 +57,7 @@
 
 
 parse_data(Data, Acc) when is_binary(Data), is_list(Acc) ->
-    parse_header(Data, Acc).
+    parse_tag(Data, Acc).
 
 
 int_to_bool(0) ->
@@ -79,14 +82,14 @@ parse_tag_flags(<<
 		     footer=int_to_bool(FlagFooter)}.
 
 
-parse_header(<<
-	      "ID3",
-	      VerMajor, VerMinor,
-	      Flags:1/binary,
-	      Size:4/binary,
-	      Rest/binary
-	      >>,
-	     Acc) ->
+parse_tag(<<
+	   "ID3",
+	   VerMajor, VerMinor,
+	   Flags:1/binary,
+	   Size:4/binary,
+	   Rest/binary
+	   >>,
+	  Acc) ->
     TagFlags = parse_tag_flags(Flags),
     RealSize = unsynch(TagFlags#id3v2_tag_flags.unsynch, Size),
     io:format("ID3 header: "
@@ -99,40 +102,59 @@ parse_header(<<
 	       Flags, TagFlags,
 	       RealSize
 	      ]),
-    Hdr = #id3v2_tag{version=#id3v2_version{major=VerMajor, minor=VerMinor},
-		     flags=TagFlags,
-		     size=RealSize},
-    parse_extended_header(TagFlags, Rest, [Hdr|Acc]).
+    {ExtHdr, Rest1} = parse_extended_header(TagFlags, Rest),
+    {Frames, Rest2} = parse_frame(TagFlags, Rest1, []),
+    {Footer, Rest3} = parse_footer(TagFlags, Rest2),
+    case Rest3 of
+	<<>> -> ok;
+	_ -> io:format("CAUTION: Unparsed data at the end of ID3v2 tag!~n", []),
+	     dump_bytes(Rest3, "Unparsed data")
+    end,
+    #id3v2_tag{version=#id3v2_version{major=VerMajor, minor=VerMinor},
+	       flags=TagFlags,
+	       size=RealSize,
+	       ext_hdr=ExtHdr,
+	       frames=Frames,
+	       footer=Footer
+	      }.
 
 
-parse_extended_header(#id3v2_tag_flags{ext_hdr=false} = TagFlags, Rest, Acc) ->
-    parse_frame(TagFlags, Rest, [Acc]);
+parse_extended_header(#id3v2_tag_flags{ext_hdr=false} = _TagFlags, Rest) ->
+    {undefined, Rest};
 parse_extended_header(TagFlags,
 		      <<
 		       ExtHdrSize:32/integer,
 		       ExtHdrStuff:ExtHdrSize/binary,
 		       Rest/binary
-		       >>, Acc) ->
+		       >>) ->
     <<
      FlagByteCount:8/integer,
      ExtendedFlags:FlagByteCount/binary
      >> = ExtHdrStuff,
-    parse_frame(TagFlags,
-		Rest,
-		[{extended_header,
-		  ExtHdrSize, FlagByteCount,
-		  ExtendedFlags}|Acc]).
+    {{extended_header,
+      ExtHdrSize,
+      FlagByteCount,
+      ExtendedFlags},
+     Rest}.
 
 
-unsynch(true,
-	  <<
-	   0:1, S3:7,
-	   0:1, S2:7,
-	   0:1, S1:7,
-	   0:1, S0:7
-	   >>) ->
+unsynch(#id3v2_tag_flags{unsynch=true},
+	<<
+	 0:1, S3:7,
+	 0:1, S2:7,
+	 0:1, S1:7,
+	 0:1, S0:7
+	 >>) ->
     (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0;
-unsynch(false, <<S:32/integer>>) ->
+unsynch(#id3v2_frame_flags{unsynch=true},
+	<<
+	 0:1, S3:7,
+	 0:1, S2:7,
+	 0:1, S1:7,
+	 0:1, S0:7
+	 >>) ->
+    (((((S3 bsl 7) + S2) bsl 7) + S1) bsl 7) + S0;
+unsynch(_, <<S:32/integer>>) ->
     S.
 
 
@@ -202,7 +224,10 @@ parse_frame_flags(
 
 parse_frame(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 	    <<0,0,0,0, _/binary>> = Rest, Acc) ->
-    parse_footer(TagFlags, Rest, Acc);
+    {lists:reverse(Acc), Rest};
+parse_frame(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
+	    <<>> = Rest, Acc) ->
+    {lists:reverse(Acc), Rest};
 parse_frame(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 	    <<
 	     FrameID:4/binary,
@@ -210,7 +235,7 @@ parse_frame(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 	     FrameFlagsRaw:2/binary,
 	     Rest/binary
 	     >>, Acc) ->
-    FrameSize = unsynch(Unsync, FrameSizeUnsynch),
+    FrameSize = unsynch(TagFlags, FrameSizeUnsynch),
     io:format("frame id    (raw): ~w (~s)~n"
 	      "frame size  (raw): ~w (~w)~n"
 	      "frame flags (raw): ~w~n",
@@ -257,11 +282,26 @@ text_content(Text) when is_binary(Text) ->
     text_content(Text, []).
 
 
+frameid_atom(FrameID) when is_binary(FrameID) ->
+    frameid_atom(binary_to_list(FrameID));
+frameid_atom(FrameID) when is_list(FrameID) ->
+    list_to_atom(FrameID).
+
+
+atom_to_frameid(FrameID) when is_atom(FrameID) ->
+    list_to_binary(atom_to_list(FrameID)).
+
+
 parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 		FrameFlags,
 		<<"TXXX">> = FrameID, FrameSize, FrameFlags, Data, Rest, Acc) ->
     parse_frame(TagFlags,
-		Rest, [{txxx_frame, FrameID, FrameSize, FrameFlags, Data}|Acc]);
+		Rest,
+		[#id3v2_frame{type=frameid_atom(FrameID),
+			      size=FrameSize,
+			      flags=FrameFlags,
+			      data=Data}
+		 |Acc]);
 parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 		FrameFlags,
 		<<"T",T1:8/integer,T2:8/integer,T3:8/integer>> = FrameID,
@@ -279,7 +319,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
     io:format("   Content: ~p~n", [text_content(Text)]),
     parse_frame(TagFlags,
 		Rest,
-		[#id3v2_text_frame{type=FrameID,
+		[#id3v2_text_frame{type=frameid_atom(FrameID),
 				   size=FrameSize,
 				   flags=FrameFlags,
 				   text_encoding=TextEncoding,
@@ -314,7 +354,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 	      ]),
     parse_frame(TagFlags,
 		Rest,
-		[#id3v2_apic_frame{type=FrameID,
+		[#id3v2_apic_frame{type=frameid_atom(FrameID),
 				   size=FrameSize,
 				   flags=FrameFlags,
 				   text_encoding=TextEncoding,
@@ -333,34 +373,36 @@ parse_frame_int(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
        ->
     parse_frame(TagFlags,
 		Rest,
-		[#id3v2_frame{type=FrameID,
+		[#id3v2_frame{type=frameid_atom(FrameID),
 			      size=FrameSize,
 			      flags=FrameFlags,
 			      data=Data}|Acc]).
 
 
 parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
-	    <<0, Rest/binary>>, Acc) ->
+	    <<0, Rest/binary>>) ->
     %% skip padding
-    parse_footer(TagFlags, Rest, Acc);
+    parse_footer(TagFlags, Rest);
 parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=true} = TagFlags,
 	     <<
 	      "3DI",
 	      VerMajor, VerMinor,
 	      Flags:1/binary,
 	      Rest/binary
-	      >>, Acc) ->
-    lists:reverse(Acc);
-parse_footer(_, <<>>, Acc) ->
-    lists:reverse(Acc);
+	      >>) ->
+    {#id3v2_footer{flags=parse_tag_flags(Flags),
+		   version=#id3v2_version{major=VerMajor, minor=VerMinor}},
+     <<>>};
+parse_footer(_, <<>>) ->
+    {undefined, <<>>};
 parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
-	     Bin, Acc) ->
+	     Bin) ->
     dump_bytes(Bin, "parse_footer unhandled"),
     io:format("    Unsync: ~p~n"
 	      "    HasFooter: ~p~n",
 	      [Unsync, HasFooter]),
     %% io:format("    Acc: ~p~n", [lists:reverse(Acc)]),
-    lists:reverse(Acc).
+    {undefined, Bin}.
 
 
 parse_data(Data) ->
@@ -377,7 +419,7 @@ render(#id3v2_tag{version=TagVersion,
 test_item(FileName) ->
     {ok, Data} = file:read_file(FileName),
     P = parse_data(Data),
-    io:format("~s:~n  ~P~n", [FileName, P,length(P)+50]),
+    io:format("~s:~n  ~P~n", [FileName, P,length(P#id3v2_tag.frames)+50]),
     P.
 
 
