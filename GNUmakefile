@@ -26,7 +26,7 @@ id3parse-test.mp3: GNUmakefile $(ALL_BEAMS)
 	erl -noshell -s id3v2 test "$(TEST_FILE)" -s init stop
 
 id3parse-test.dump: id3parse-test.mp3
-	hexdump -C "$<" > "$@"
+	hexdump -C "$<" | sed '/00 00 00 ff fb/q' > "$@"
 
 orig.dump: GNUmakefile
 	hexdump -C "$(TEST_FILE)" | sed '/00 00 00 ff fb/q' > "$@"
