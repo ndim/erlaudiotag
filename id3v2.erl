@@ -12,6 +12,7 @@
 %% BUG: Need to remove data sizes from records where the size is implied.
 %% BUG: Need to keep proper track of data sizes while rendering.
 %% BUG: Add human readable names of frames.
+%% BUG: Verify "unsynch"ed 32bit ints are read and written correctly.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -530,7 +531,7 @@ render(#id3v2_tag{version=TagVersion,
     [<<"ID3">>,
      render(TagVersion),
      render(TagFlags),
-     ununsynch(TagFlags, Size),
+     ununsynch_int(Size), % TagFlags, Size),
      RFrames,
      RPadding,
      RFooter
