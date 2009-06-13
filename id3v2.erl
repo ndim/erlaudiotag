@@ -513,17 +513,26 @@ parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = TagFlags,
 
 render(#id3v2_tag{version=TagVersion,
 		  flags=TagFlags,
-		  size=Size,
+		  size=OldSize,
 		  frames=Frames,
 		  padding=Padding,
 		  footer=Footer}) ->
+    RFrames = render(TagFlags, Frames),
+    RPadding = render(TagFlags, Padding),
+    RFooter = render(TagFlags, Footer),
+    Sizes = [iolist_size(RFrames),
+	     iolist_size(RPadding),
+	     iolist_size(RFooter)],
+    Size = lists:sum(Sizes),
+    io:format("render tag: oldsize=~w size=~w (~w)~n",
+	      [OldSize, Size, Sizes]),
     [<<"ID3">>,
      render(TagVersion),
      render(TagFlags),
      ununsynch(TagFlags, Size),
-     render(TagFlags, Frames),
-     render(TagFlags, Padding),
-     render(TagFlags, Footer)
+     RFrames,
+     RPadding,
+     RFooter
     ];
 render(#id3v2_tag_version{major=Major, minor=Minor}) ->
     <<Major, Minor>>;
@@ -555,13 +564,20 @@ render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
      Data];
 render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
 			      payload=#id3v2_apic_frame{
-				size=Size,
+				size=OldSize,
 				text_encoding=TextEncoding,
 				description=Description,
 				mime_type=MimeType,
 				pic_type=PicType,
 				img_data=ImgData
 			       }}) ->
+    Sizes = [1, iolist_size(MimeType), 1,
+	     1,
+	     iolist_size(Description), 1,
+	     size(ImgData)],
+    Size = lists:sum(Sizes),
+    io:format("render APIC frame: oldsize=~w size=~w (~w)~n",
+	      [OldSize, Size, Sizes]),
     [atom_to_frameid(ID),
      ununsynch(TagFlags, Size),
      render(TagFlags, Flags),
@@ -572,8 +588,12 @@ render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
      ImgData];
 render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
 			      payload=#id3v2_text_frame{
-				size=Size,
+				size=OldSize,
 				text_encoding=TextEncoding, text=Text}}) ->
+    Sizes = [1, iolist_size(Text)],
+    Size = lists:sum(Sizes),
+    io:format("render text frame: oldsize=~w size=~w (~w)~n",
+	      [OldSize, Size, Sizes]),
     [atom_to_frameid(ID),
      ununsynch(TagFlags, Size),
      render(TagFlags, Flags),
