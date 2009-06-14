@@ -209,12 +209,20 @@ dump_bytes(Bin, Msg) when is_binary(Bin) ->
 
 parse_file(FileName) ->
     io:format("parse_file(\"~s\")~n", [FileName]),
-    {ok, Data} = file:read_file(FileName),
-    parse_data(Data).
-
-
-parse_data(Data) when is_binary(Data) ->
-    parse_tag(Data).
+    {ok, File} = file:open(FileName, [read, raw, binary]),
+    {ok, HeadData} = file:read(File, 10),
+    case HeadData of
+	<<"ID3", _VerMajor, _VerMinor, _Flags:1/binary, Size:4/binary>> ->
+	    %% FIXME: WHY true, why not TagFlags?
+	    RealSize = unsynch_int(true, Size),
+	    %% +10 for the potential footer
+	    {ok, Data} = file:read(File, RealSize+10),
+	    file:close(File),
+	    parse_tag(HeadData, Data);
+	_ ->
+	    file:close(File),
+	    {error, no_id3v2_tag_at_sof, HeadData}
+    end.
 
 
 parse_tag_flags(<<
@@ -233,13 +241,24 @@ parse_tag_flags(<<
 		     footer=int_to_bool(FlagFooter)}.
 
 
-parse_tag(<<
+parse_data(<<
 	   "ID3",
 	   VerMajor, VerMinor,
 	   Flags:1/binary,
 	   Size:4/binary,
 	   Rest/binary
 	   >>) ->
+    parse_tag(<<"ID3", VerMajor, VerMinor, Flags:1/binary, Size:4/binary>>,
+	      Rest);
+parse_data(Bin) when is_binary(Bin) ->
+    <<Hdr:10/binary, _/binary>> = Bin,
+    {error, no_id3v2_tag_hdr, Hdr}.
+
+
+parse_tag(<<"ID3", VerMajor, VerMinor, Flags:1/binary, Size:4/binary>>,
+	  Rest)
+  when is_binary(Rest)
+       ->
     TagFlags = parse_tag_flags(Flags),
     RealSize = unsynch_int(true, Size), % FIXME: WHY true, why not TagFlags?
     io:format("ID3 header: "
@@ -269,9 +288,7 @@ parse_tag(<<
 		padding=#id3v2_padding{size=PadSize},
 		footer=Footer
 	       },
-     AfterTag};
-parse_tag(Bin) when is_binary(Bin) ->
-    {error, no_id3v2_tag, Bin}.
+     AfterTag}.
 
 
 parse_extended_header(#id3v2_tag_flags{ext_hdr=false} = _TagFlags, Rest) ->
