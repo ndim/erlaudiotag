@@ -1,7 +1,10 @@
 -include local.mk
 TEST_FILE ?= does-not-exist.mp3
 
-ERL_MODS = id3v2
+ERL_MODS =
+ERL_MODS += id3v2
+ERL_MODS += ogg
+
 ERLC_FLAGS =
 ERLC_FLAGS += +debug_info
 ERLC_FLAGS += +report

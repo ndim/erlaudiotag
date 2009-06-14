@@ -24,6 +24,7 @@
 -export([test/1, test/0]).
 -export([parse_data/1, parse_file/1]).
 -export([render/1]).
+-export([dump_bytes/2]).
 
 
 -include_lib("kernel/include/file.hrl").
