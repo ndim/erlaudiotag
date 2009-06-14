@@ -212,7 +212,9 @@ parse_file(FileName) ->
     {ok, File} = file:open(FileName, [read, raw, binary]),
     {ok, HeadData} = file:read(File, 10),
     case HeadData of
-	<<"ID3", _VerMajor, _VerMinor, _Flags:1/binary, Size:4/binary>> ->
+	<<"ID3", VerMajor, _VerMinor, _Flags:1/binary, Size:4/binary>>
+	when (3 =< VerMajor)
+	     ->
 	    %% FIXME: WHY true, why not TagFlags?
 	    RealSize = unsynch_int(true, Size),
 	    %% +10 for the potential footer
