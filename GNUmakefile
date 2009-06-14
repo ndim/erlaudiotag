@@ -16,7 +16,7 @@ CLEAN_FILES =
 CLEAN_FILES += *~
 CLEAN_FILES += erl_crash.dump
 
-ALL_BEAMS = $(foreach base,$(ERL_MODS),$(base).beam)
+ALL_BEAMS = $(foreach base,$(ERL_MODS),ebin/$(base).beam)
 CLEAN_FILES += $(ALL_BEAMS)
 
 .PHONY: check
@@ -32,12 +32,12 @@ all: $(ALL_BEAMS)
 help:
 	@echo TEST_FILE=$(TEST_FILE)
 
-%.beam: %.erl
-	erlc $(ERLC_FLAGS) "$<"
+ebin/%.beam: src/%.erl
+	erlc -o ebin $(ERLC_FLAGS) "$<"
 
 CLEAN_FILES += id3parse-test.mp3
 id3parse-test.mp3: GNUmakefile $(ALL_BEAMS)
-	erl -noshell -s id3v2 test "$(TEST_FILE)" -s init stop
+	erl -noshell -pa ebin -s id3v2 test "$(TEST_FILE)" -s init stop
 
 CLEAN_FILES += id3parse-test.dump
 id3parse-test.dump: id3parse-test.mp3
