@@ -24,7 +24,9 @@
 -export([test/1, test/0]).
 -export([parse_data/1, parse_file/1]).
 -export([render/1]).
--export([dump_bytes/2]).
+
+
+-import(ndim_bpu, [dump_bytes/2]).
 
 
 -include_lib("kernel/include/file.hrl").
@@ -36,7 +38,6 @@
 
 
 -define(TAG_TABLE, id3_frame_ids).
--define(BYTE_COUNT, 64).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -156,51 +157,6 @@ ununsynch(#id3v2_tag_flags{unsynch=Bool}, Size) when is_integer(Size) ->
     ununsynch_int(Bool, Size);
 ununsynch(#id3v2_frame_flags{unsynch=Bool}, Size) when is_integer(Size) ->
     ununsynch_int(Bool, Size).
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Debugging Aids
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-msleep(MSec) ->
-    receive
-    after MSec ->
-	    ok
-    end.
-
-
-first_bytes(Bin) when is_binary(Bin) ->
-    {FirstBytes, _} = split_binary(Bin, ?BYTE_COUNT),
-    FirstBytes.
-
-
-last_bytes(Bin) when is_binary(Bin) ->
-    {_, LastBytes} = split_binary(Bin, size(Bin) - ?BYTE_COUNT),
-    LastBytes.
-
-
-shorten_bytes(Bin) when is_binary(Bin), size(Bin) > 2*?BYTE_COUNT ->
-    {first_bytes(Bin), last_bytes(Bin)};
-shorten_bytes(Bin) when is_binary(Bin) ->
-    Bin.
-
-
-dump_bytes(Bin, Msg) when is_binary(Bin) ->
-    case Msg of
-	none -> io:format("  Byte dump:~n", []);
-	_ ->    io:format("  Byte dump (~s):~n", [Msg])
-    end,
-    io:format("    Size: ~w~n", [size(Bin)]),
-    case shorten_bytes(Bin) of
-	{F,L} ->
-	    io:format("    Data: ~p~n"
-		      "          ...~n"
-		      "          ~p~n",
-		      [F,L]);
-	Bin ->
-	    io:format("    Data: ~p~n", [Bin])
-    end.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

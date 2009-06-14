@@ -2,6 +2,7 @@
 TEST_FILE ?= does-not-exist.mp3
 
 ERL_MODS =
+ERL_MODS += ndim_bpu
 ERL_MODS += id3v2
 ERL_MODS += ogg
 

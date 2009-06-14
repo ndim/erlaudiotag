@@ -5,6 +5,9 @@
 -export([parse_file/1]).
 
 
+-import(ndim_bpu, [dump_bytes/2]).
+
+
 parse_file(FileName) ->
     {ok, File} = file:open(FileName, [read, raw, binary]),
     {ok, HeadData} = file:read(File, 1024),
@@ -68,7 +71,7 @@ parse_ogg(<<
 	       PageSegments,
 	       SegmentTable
 	      ]),
-    id3v2:dump_bytes(Rest, "Rest"),
+    dump_bytes(Rest, "Rest"),
     parse_vorbis(Rest).
 
 
@@ -120,7 +123,7 @@ parse_vorbis_header(identification,
 	       FramingFlag,
 	       Padding, Padding
 	      ]),
-    id3v2:dump_bytes(Rest, "Rest"),
+    dump_bytes(Rest, "Rest"),
     parse_ogg(Rest);
 parse_vorbis_header(comment,
 		    <<
@@ -139,9 +142,9 @@ parse_vorbis_header(comment,
 	       VendorLength, VendorString,
 	       UserCommentListLength
 	      ]),
-    id3v2:dump_bytes(Rest, "UserComment Data"),
+    dump_bytes(Rest, "UserComment Data"),
     {Comments, Rest1} = parse_user_comments(UserCommentListLength, Rest, []),
-    id3v2:dump_bytes(Rest1, "Rest1"),
+    dump_bytes(Rest1, "Rest1"),
     <<
      0:7, % padding
      1:1, % framing bit
@@ -151,7 +154,7 @@ parse_vorbis_header(comment,
 	  {K,V} = split_comment(C),
 	  io:format("  Comment: ~-13s \"~s\"~n", [K,V])
       end || C <- Comments ],
-    id3v2:dump_bytes(Rest2, "Rest2"),
+    dump_bytes(Rest2, "Rest2"),
     parse_vorbis(Rest2);
 parse_vorbis_header(setup, <<Rest/binary>>) ->
     %% Setup Header
