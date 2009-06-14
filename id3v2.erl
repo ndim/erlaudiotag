@@ -321,7 +321,7 @@ parse_frame_flags(
 
 
 parse_frame(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = _TagFlags,
-	    <<0,0,0,0, _/binary>> = Rest, Acc) ->
+	    <<0, _/binary>> = Rest, Acc) ->
     {lists:reverse(Acc), Rest};
 parse_frame(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = _TagFlags,
 	    <<>> = Rest, Acc) ->
@@ -340,22 +340,24 @@ parse_frame(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 	      [FrameID, binary_to_list(FrameID),
 	       FrameSizeUnsynch, FrameSize,
 	       FrameFlagsRaw]),
-    dump_bytes(Rest, "Frame data"),
+    dump_bytes(Rest, "Following data"),
 
     FrameFlags = parse_frame_flags(FrameFlagsRaw),
+
+    <<
+     FrameData:FrameSize/binary,
+     NewRest/binary
+     >> = Rest,
+
+    dump_bytes(FrameData, "Frame Data"),
 
     io:format("parse_frame id=\"~s\" size=~w=~w flags=~w=~w~n",
 	      [binary_to_list(FrameID),
 	       FrameSizeUnsynch, FrameSize,
 	       FrameFlagsRaw, FrameFlags]),
 
-    <<
-     Data:FrameSize/binary,
-     NewRest/binary
-     >> = Rest,
-
     parse_frame_int(TagFlags, FrameFlags,
-		    FrameID, FrameSize, FrameFlags, Data,
+		    FrameID, FrameSize, FrameFlags, FrameData,
 		    NewRest, Acc).
 
 
