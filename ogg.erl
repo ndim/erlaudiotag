@@ -147,7 +147,10 @@ parse_vorbis_header(comment,
      1:1, % framing bit
      Rest2/binary
      >> = Rest1,
-    [ io:format("  Comment: ~s~n", [C]) || C <- Comments ],
+    [ begin
+	  {K,V} = split_comment(C),
+	  io:format("  Comment: ~-13s \"~s\"~n", [K,V])
+      end || C <- Comments ],
     id3v2:dump_bytes(Rest2, "Rest2"),
     parse_vorbis(Rest2);
 parse_vorbis_header(setup, <<Rest/binary>>) ->
@@ -172,6 +175,15 @@ parse_user_comments(UserCommentsListLength,
     parse_user_comments(UserCommentsListLength-1,
 			Rest,
 			[Comment|Acc]).
+
+
+split_comment(<<"=", Rest/binary>>, AccKey) ->
+    {list_to_binary(lists:reverse(AccKey)), Rest};
+split_comment(<<Char, Rest/binary>>, AccKey) ->
+    split_comment(Rest, [Char|AccKey]).
+
+split_comment(Binary) when is_binary(Binary) ->
+    split_comment(Binary, []).
 
 
 test_item(FileName) ->
