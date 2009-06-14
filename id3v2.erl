@@ -23,6 +23,10 @@
 
 -export([test/1, test/0]).
 -export([parse_data/1, parse_file/1]).
+-export([render/1]).
+
+
+-include_lib("kernel/include/file.hrl").
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -639,17 +643,35 @@ render(TagFlags, List) when is_list(List) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-test_item(FileName) ->
+test_filename(FileName, DoRenderTest) ->
+    io:format("test_filename(~p)~n", [FileName]),
     case parse_file(FileName) of
 	{ok, P, Rest} ->
-	    io:format("~s:~n  ~P~n", [FileName, P,length(P#id3v2_tag.frames)+50]),
-	    R = render(P),
-	    file:write_file("id3parse-test.mp3", [R,Rest]),
+	    io:format("~s:~n  ~P~n",
+		      [FileName, P,length(P#id3v2_tag.frames)+50]),
+	    case DoRenderTest of
+		true ->
+		    R = render(P),
+		    file:write_file("id3parse-test.mp3", [R,Rest]);
+		false ->
+		    ok
+	    end,
 	    P;
 	{error, Error, Data} ->
 	    io:format("~s:~n  ~s~n  ~P~n",
 		      [FileName, Error, Data, 50]),
 	    {error, Error}
+    end.
+
+
+test_item(FileName) ->
+    {ok, FileInfo} = file:read_file_info(FileName),
+    case FileInfo#file_info.type of
+	regular ->
+	    test_filename(FileName, false);
+	directory ->
+	    {ok, Filenames} = file:list_dir(FileName),
+	    [test_item(filename:join(FileName,Item)) || Item <- Filenames]
     end.
 
 
