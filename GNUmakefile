@@ -10,6 +10,8 @@ ERLC_FLAGS =
 ERLC_FLAGS += +debug_info
 ERLC_FLAGS += +report
 ERLC_FLAGS += +verbose
+ERLC_FLAGS += -o ebin
+ERLC_FLAGS += -I include
 # ERLC_FLAGS += +return
 
 CLEAN_FILES =
@@ -33,7 +35,7 @@ help:
 	@echo TEST_FILE=$(TEST_FILE)
 
 ebin/%.beam: src/%.erl
-	erlc -o ebin $(ERLC_FLAGS) "$<"
+	erlc $(ERLC_FLAGS) "$<"
 
 CLEAN_FILES += id3parse-test.mp3
 id3parse-test.mp3: GNUmakefile $(ALL_BEAMS)
