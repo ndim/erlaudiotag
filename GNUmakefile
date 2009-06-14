@@ -15,7 +15,7 @@ ALL_BEAMS = $(foreach base,$(ERL_MODS),$(base).beam)
 CLEAN_FILES += $(ALL_BEAMS)
 
 .PHONY: check
-check: all id3parse-test.mp3 id3parse-test.dump orig.dump
+check: all orig.dump id3parse-test.mp3 id3parse-test.dump
 	cmp id3parse-test.dump orig.dump || \
 		colordiff -u orig.dump id3parse-test.dump | less -r
 	cmp "$(TEST_FILE)" id3parse-test.mp3
