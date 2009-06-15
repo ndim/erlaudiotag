@@ -15,7 +15,6 @@
 %% BUG: Verify "unsynch"ed 32bit ints are read and written correctly.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% FIXME: Avoid encoding arbitrary strings from user data as atoms.
-%% FIXME: Store original frame data <<binary>> for rendering unchanged.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -603,15 +602,24 @@ render(_TagFlags, #id3v2_padding{size=0}) ->
 render(_TagFlags, #id3v2_padding{size=Size}) ->
     list_to_binary([ 0 || _ <- lists:seq(1,Size) ]);
 render(TagFlags, #id3v2_frame{id=FrameID, flags=FrameFlags,
-			      orig_payload=Payload})
-  when is_binary(Payload) ->
-    [atom_to_frameid(FrameID),
-     ununsynch(TagFlags, size(Payload)),
-     render(TagFlags, FrameFlags),
-     Payload];
-render(TagFlags, #id3v2_frame{id=FrameID, flags=FrameFlags,
+			      orig_payload=OrigPayload,
 			      payload=Payload}) ->
-    RP = render_payload(Payload),
+    UseOriginal = true,
+    %% Note that the case explictly does not handle the two errorneous cases.
+    RP = render_payload
+	   (case UseOriginal of
+		false when is_binary(OrigPayload),
+			   is_record(Payload, id3v2_generic_frame) ->
+		    OrigPayload;
+		false when is_binary(OrigPayload) ->
+		    Payload;
+		false when not is_record(Payload, id3v2_generic_frame) ->
+		    Payload;
+		true when is_binary(OrigPayload) ->
+		    OrigPayload;
+		true when not is_record(Payload, id3v2_generic_frame) ->
+		    Payload
+	    end),
     RPL = iolist_size(RP),
     [atom_to_frameid(FrameID),
      ununsynch(TagFlags, RPL),
@@ -640,6 +648,8 @@ render(TagFlags, List) when is_list(List) ->
     [ render(TagFlags, Item) || Item <- List ].
 
 
+render_payload(Binary) when is_binary(Binary) ->
+    Binary;
 render_payload(
   #id3v2_apic_frame{text_encoding=TextEncoding,
 		    description=Description,

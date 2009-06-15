@@ -40,7 +40,7 @@
 
 -record(id3v2_frame,
 	{id, name, flags,
-	 orig_payload,
+	 orig_payload, % If you modify the payload, set this to a non-binary.
 	 payload}).
 
 
