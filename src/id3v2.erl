@@ -494,6 +494,41 @@ parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = _TagFlags,
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
+render_text_int(0, List) ->
+    unicode:characters_to_binary(List, unicode, latin1);
+render_text_int(1, List) ->
+    Encoding = utf16,
+    [unicode:encoding_to_bom(Encoding),
+     unicode:characters_to_binary(List, unicode, Encoding)];
+render_text_int(2, List) ->
+    unicode:characters_to_binary(List, unicode, {utf16, big});
+render_text_int(3, List) ->
+    unicode:characters_to_binary(List, unicode, utf8).
+
+
+render_text(_TextEncoding, [], Acc) ->
+    lists:reverse(Acc);
+render_text(TextEncoding, [Head], Acc) ->
+    render_text(TextEncoding, [],
+		[render_text_int(TextEncoding, Head) | Acc]);
+render_text(0 = TextEncoding, [Head|Tail], Acc) ->
+    render_text(TextEncoding, Tail,
+		[<<0>>, render_text_int(TextEncoding, Head) | Acc]);
+render_text(1 = TextEncoding, [Head|Tail], Acc) ->
+    render_text(TextEncoding, Tail,
+		[<<0,0>>, render_text_int(TextEncoding, Head) | Acc]);
+render_text(2 = TextEncoding, [Head|Tail], Acc) ->
+    render_text(TextEncoding, Tail,
+		[<<0,0>>, render_text_int(TextEncoding, Head) | Acc]);
+render_text(3 = TextEncoding, [Head|Tail], Acc) ->
+    render_text(TextEncoding, Tail,
+		[<<0>>, render_text_int(TextEncoding, Head) | Acc]).
+
+
+render_text(TextEncoding, Text) ->
+    render_text(TextEncoding, Text, []).
+
+
 render(#id3v2_tag{version=TagVersion,
 		  flags=TagFlags,
 		  size=OldSize,
@@ -572,7 +607,9 @@ render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
 render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
 			      payload=#id3v2_text_frame{
 				size=OldSize,
-				text_encoding=TextEncoding, text=Text}}) ->
+				text_encoding=TextEncoding,
+				text=Content}}) ->
+    Text = render_text(TextEncoding, Content),
     Sizes = [1, iolist_size(Text)],
     Size = lists:sum(Sizes),
     io:format("render text frame: oldsize=~w size=~w (~w)~n",
