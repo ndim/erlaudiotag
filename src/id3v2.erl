@@ -289,25 +289,67 @@ parse_frame(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		    NewRest, Acc).
 
 
-text_content_int(<<>>, Acc) ->
+text_content_int(_TextEncoding, <<>>, Acc) ->
     {lists:reverse(Acc), <<>>};
-text_content_int(<<0, Rest/binary>>, Acc) ->
+
+%% TextEncoding = 0, -> latin1
+text_content_int(0, <<0/integer, Rest/binary>>, Acc) ->
     {lists:reverse(Acc), Rest};
-text_content_int(<<Char, Rest/binary>>, Acc) ->
-    text_content_int(Rest, [Char|Acc]).
+text_content_int(0 = TextEncoding, <<Char/integer, Rest/binary>>, Acc) ->
+    text_content_int(TextEncoding, Rest, [Char|Acc]);
 
-text_content_int(Text) when is_binary(Text) ->
-    text_content_int(Text, []).
+%% TextEncoding = 1, -> utf16 with BOM
+text_content_int(1, <<0,0, Rest/binary>>, Acc) ->
+    {lists:reverse(Acc), Rest};
+text_content_int(1, <<255, 254, Rest/binary>>, Acc) ->
+    text_content_int(little, Rest, Acc);
+text_content_int(1, <<254, 255, Rest/binary>>, Acc) ->
+    text_content_int(2, Rest, Acc); % big endian
+
+%% TextEncoding = 2, -> utf16be without BOM
+text_content_int(2, <<0,0, Rest/binary>>, Acc) ->
+    {lists:reverse(Acc), Rest};
+text_content_int(2 = TextEncoding, <<Char/big-utf16, Rest/binary>>, Acc) ->
+    text_content_int(TextEncoding, Rest, [Char|Acc]);
+
+%% TextEncoding = little -> utf16le without BOM
+text_content_int(little, <<0,0, Rest/binary>>, Acc) ->
+    {lists:reverse(Acc), Rest};
+text_content_int(little = TextEncoding, <<Char/little-utf16, Rest/binary>>, Acc) ->
+    text_content_int(TextEncoding, Rest, [Char|Acc]);
+
+%% TextEncoding = 2, -> utf8
+text_content_int(3, <<0/utf8, Rest/binary>>, Acc) ->
+    {lists:reverse(Acc), Rest};
+text_content_int(3 = TextEncoding, <<Char/utf8, Rest/binary>>, Acc) ->
+    text_content_int(TextEncoding, Rest, [Char|Acc]).
+
+text_content_int(TextEncoding, Text) when is_binary(Text) ->
+    text_content_int(TextEncoding, Text, []).
 
 
-text_content(<<>>, Acc) ->
+text_content(_TextEncoding, <<>>, Acc) ->
     lists:reverse(Acc);
-text_content(Text, Acc) ->
-    {String, NewText} = text_content_int(Text),
-    text_content(NewText, [String|Acc]).
+text_content(TextEncoding, Text, Acc) ->
+    {String, NewText} = text_content_int(TextEncoding, Text),
+    text_content(TextEncoding, NewText, [String|Acc]).
 
-text_content(Text) when is_binary(Text) ->
-    text_content(Text, []).
+
+text_content(TextEncoding, Text) when is_binary(Text) ->
+    case false of
+	true ->
+	    io:format("text_content(~s,~n"
+		      "             ~P)~n",
+		      [case TextEncoding of
+			   0 -> "latin1";
+			   1 -> "utf16-with-BOM";
+			   2 -> "utf16be";
+			   3 -> "utf8"
+		       end,
+		       Text, 100]);
+	false -> ok
+    end,
+    text_content(TextEncoding, Text, []).
 
 
 frameid_atom(FrameID) when is_binary(FrameID) ->
@@ -349,7 +391,8 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 	      [binary_to_list(FrameID),
 	       TextEncoding]),
     io:format("   Content: ~w ~p~n", [size(Text), Text]),
-    io:format("   Content: ~p~n", [text_content(Text)]),
+    Content = text_content(TextEncoding, Text),
+    io:format("   Content: ~p~n", [Content]),
     parse_frame(TagFlags,
 		Rest,
 		[#id3v2_frame{id=frameid_atom(FrameID),
@@ -358,7 +401,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 			      payload=#id3v2_text_frame{
 				size=FrameSize,
 				text_encoding=TextEncoding,
-				text=Text}}|Acc]);
+				text=Content}}|Acc]);
 parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		FrameFlags,
 		<<"APIC">> = FrameID,
@@ -369,11 +412,11 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		 >>,
 		Rest, Acc) ->
     dump_bytes(Data, "Data"),
-    {MimeType, Data1} = text_content_int(Data),
+    {MimeType, Data1} = text_content_int(TextEncoding, Data),
     dump_bytes(Data1, "Data1"),
     <<PictureType:8/integer, Data2/binary>> = Data1,
     dump_bytes(Data2, "Data2"),
-    {Description, ImgData} = text_content_int(Data2),
+    {Description, ImgData} = text_content_int(TextEncoding, Data2),
     dump_bytes(ImgData, "ImgData"),
     dump_bytes(Rest, "Rest"),
     io:format("  APIC tag:      ~s~n"
