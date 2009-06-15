@@ -15,6 +15,7 @@
 %% BUG: Verify "unsynch"ed 32bit ints are read and written correctly.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% FIXME: Avoid encoding arbitrary strings from user data as atoms.
+%% FIXME: Store original frame data <<binary>> for rendering unchanged.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -26,7 +27,7 @@
 -export([render/1]).
 
 
--import(ndim_bpu, [dump_bytes/2]).
+-import(ndim_bpu, [dump_bytes/2, msleep/1]).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -285,7 +286,7 @@ parse_frame(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 	       FrameFlagsRaw, FrameFlags]),
 
     parse_frame_int(TagFlags, FrameFlags,
-		    FrameID, FrameSize, FrameFlags, FrameData,
+		    FrameID, FrameFlags, FrameData,
 		    NewRest, Acc).
 
 
@@ -364,23 +365,20 @@ atom_to_frameid(FrameID) when is_atom(FrameID) ->
 
 parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		FrameFlags,
-		<<"TXXX">> = FrameID, FrameSize, FrameFlags, Data, Rest, Acc) ->
+		<<"TXXX">> = FrameID, FrameFlags, Payload, Rest, Acc) ->
     parse_frame(TagFlags,
 		Rest,
 		[#id3v2_frame
 		 {id=frameid_atom(FrameID),
 		  name=frameid_name(FrameID),
 		  flags=FrameFlags,
-		  payload=#id3v2_generic_frame
-		  {
-		    size=FrameSize,
-		    data=Data
-		   }}|Acc]);
+		  orig_payload=Payload,
+		  payload=#id3v2_generic_frame{}}|Acc]);
 parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		FrameFlags,
 		<<"T",T1:8/integer,T2:8/integer,T3:8/integer>> = FrameID,
-		FrameSize, FrameFlags,
-		<<TextEncoding:8/integer, Text/binary>> = _Data,
+		FrameFlags,
+		<<TextEncoding:8/integer, Text/binary>> = Payload,
 		Rest, Acc)
   when ($0 =< T1), (T1 =< $Z),
        ($0 =< T2), (T2 =< $Z),
@@ -393,22 +391,23 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
     io:format("   Content: ~w ~p~n", [size(Text), Text]),
     Content = text_content(TextEncoding, Text),
     io:format("   Content: ~p~n", [Content]),
+    [Characters] = Content,
     parse_frame(TagFlags,
 		Rest,
 		[#id3v2_frame{id=frameid_atom(FrameID),
 			      name=frameid_name(FrameID),
 			      flags=FrameFlags,
+			      orig_payload=Payload,
 			      payload=#id3v2_text_frame{
-				size=FrameSize,
 				text_encoding=TextEncoding,
-				text=Content}}|Acc]);
+				text=Characters}}|Acc]);
 parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		FrameFlags,
 		<<"USLT">> = FrameID,
-		FrameSize, FrameFlags,
+		FrameFlags,
 		<<TextEncoding:8/integer,
 		 Language:3/binary,
-		 Text/binary>> = _Data,
+		 Text/binary>> = Payload,
 		Rest, Acc) ->
     io:format("  Text tag: ~s~n"
 	      "  Encoding: ~w~n"
@@ -425,22 +424,23 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		[#id3v2_frame{id=frameid_atom(FrameID),
 			      name=frameid_name(FrameID),
 			      flags=FrameFlags,
+			      orig_payload=Payload,
 			      payload=#id3v2_uslt_frame{
-				size=FrameSize,
 				text_encoding=TextEncoding,
+				language=Language,
 				content_descriptor=ContentDescriptor,
 				lyrics_text=LyricsText}}|Acc]);
 parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		FrameFlags,
 		<<"APIC">> = FrameID,
-		FrameSize, FrameFlags,
+		FrameFlags,
 		<<
 		 TextEncoding:8/integer,
-		 Data/binary
-		 >>,
+		 Stuff/binary
+		 >> = Payload,
 		Rest, Acc) ->
-    dump_bytes(Data, "Data"),
-    {MimeType, Data1} = text_content_int(TextEncoding, Data),
+    dump_bytes(Stuff, "Stuff"),
+    {MimeType, Data1} = text_content_int(TextEncoding, Stuff),
     dump_bytes(Data1, "Data1"),
     <<PictureType:8/integer, Data2/binary>> = Data1,
     dump_bytes(Data2, "Data2"),
@@ -463,8 +463,8 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		[#id3v2_frame{id=frameid_atom(FrameID),
 			      name=frameid_name(FrameID),
 			      flags=FrameFlags,
+			      orig_payload=Payload,
 			      payload=#id3v2_apic_frame{
-				size=FrameSize,
 				text_encoding=TextEncoding,
 				description=Description,
 				mime_type=MimeType,
@@ -473,7 +473,7 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		FrameFlags,
 		<<T0:8/integer,T1:8/integer,T2:8/integer,T3:8/integer>>=FrameID,
-		FrameSize, FrameFlags, Data, Rest, Acc)
+		FrameFlags, Payload, Rest, Acc)
   when ($0 =< T0), (T0 =< $Z),
        ($0 =< T1), (T1 =< $Z),
        ($0 =< T2), (T2 =< $Z),
@@ -484,9 +484,8 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		[#id3v2_frame{id=frameid_atom(FrameID),
 			      name=frameid_name(FrameID),
 			      flags=FrameFlags,
-			      payload=#id3v2_generic_frame{
-				size=FrameSize,
-				data=Data}}|Acc]).
+			      orig_payload=Payload,
+			      payload=#id3v2_generic_frame{}}|Acc]).
 
 
 skip_padding(<<0, Rest/binary>>, Padding) ->
@@ -524,6 +523,8 @@ parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = _TagFlags,
 
 render_text_int(0, List) ->
     unicode:characters_to_binary(List, unicode, latin1);
+render_text_int(1, "") ->
+    <<>>;
 render_text_int(1, List) ->
     Encoding = utf16,
     [unicode:encoding_to_bom(Encoding),
@@ -536,9 +537,9 @@ render_text_int(3, List) ->
 
 render_text(_TextEncoding, [], Acc) ->
     lists:reverse(Acc);
-render_text(TextEncoding, [Head], Acc) ->
-    render_text(TextEncoding, [],
-		[render_text_int(TextEncoding, Head) | Acc]);
+%%render_text(TextEncoding, [Head], Acc) ->
+%%    render_text(TextEncoding, [],
+%%		[render_text_int(TextEncoding, Head) | Acc]);
 render_text(0 = TextEncoding, [Head|Tail], Acc) ->
     render_text(TextEncoding, Tail,
 		[<<0>>, render_text_int(TextEncoding, Head) | Acc]);
@@ -601,53 +602,21 @@ render(_TagFlags, #id3v2_padding{size=0}) ->
     [];
 render(_TagFlags, #id3v2_padding{size=Size}) ->
     list_to_binary([ 0 || _ <- lists:seq(1,Size) ]);
-render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
-			      payload=#id3v2_generic_frame{size=Size,
-							   data=Data}}) ->
-    [atom_to_frameid(ID),
-     ununsynch(TagFlags, Size),
-     render(TagFlags, Flags),
-     Data];
-render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
-			      payload=#id3v2_apic_frame{
-				size=OldSize,
-				text_encoding=TextEncoding,
-				description=Description,
-				mime_type=MimeType,
-				pic_type=PicType,
-				img_data=ImgData
-			       }}) ->
-    Sizes = [1, iolist_size(MimeType), 1,
-	     1,
-	     iolist_size(Description), 1,
-	     size(ImgData)],
-    Size = lists:sum(Sizes),
-    io:format("render APIC frame: oldsize=~w size=~w (~w)~n",
-	      [OldSize, Size, Sizes]),
-    [atom_to_frameid(ID),
-     ununsynch(TagFlags, Size),
-     render(TagFlags, Flags),
-     TextEncoding,
-     MimeType,0,
-     PicType,
-     Description,0,
-     ImgData];
-render(TagFlags, #id3v2_frame{id=ID, flags=Flags,
-			      payload=#id3v2_text_frame{
-				size=OldSize,
-				text_encoding=TextEncoding,
-				text=Content}}) ->
-    Text = render_text(TextEncoding, Content),
-    Sizes = [1, iolist_size(Text)],
-    Size = lists:sum(Sizes),
-    io:format("render text frame: oldsize=~w size=~w (~w)~n",
-	      [OldSize, Size, Sizes]),
-    [atom_to_frameid(ID),
-     ununsynch(TagFlags, Size),
-     render(TagFlags, Flags),
-     <<TextEncoding>>,
-     Text
-    ];
+render(TagFlags, #id3v2_frame{id=FrameID, flags=FrameFlags,
+			      orig_payload=Payload})
+  when is_binary(Payload) ->
+    [atom_to_frameid(FrameID),
+     ununsynch(TagFlags, size(Payload)),
+     render(TagFlags, FrameFlags),
+     Payload];
+render(TagFlags, #id3v2_frame{id=FrameID, flags=FrameFlags,
+			      payload=Payload}) ->
+    RP = render_payload(Payload),
+    RPL = iolist_size(RP),
+    [atom_to_frameid(FrameID),
+     ununsynch(TagFlags, RPL),
+     render(TagFlags, FrameFlags),
+     RP];
 render(_TagFlags, F) when is_record(F, id3v2_frame_flags)->
     <<
      0:1,
@@ -671,6 +640,37 @@ render(TagFlags, List) when is_list(List) ->
     [ render(TagFlags, Item) || Item <- List ].
 
 
+render_payload(
+  #id3v2_apic_frame{text_encoding=TextEncoding,
+		    description=Description,
+		    mime_type=MimeType,
+		    pic_type=PicType,
+		    img_data=ImgData
+		   }) ->
+    [TextEncoding,
+     MimeType,0,
+     PicType,
+     Description,0,
+     ImgData];
+render_payload(
+  #id3v2_text_frame{text_encoding=TextEncoding,
+		    text=Content}) ->
+    [<<TextEncoding>>,
+     render_text_int(TextEncoding, Content)
+    ];
+render_payload(
+  #id3v2_uslt_frame{text_encoding=TextEncoding,
+		    language=Language,
+		    content_descriptor=ContentDescriptor,
+		    lyrics_text=LyricsText}) ->
+    Content = [ContentDescriptor, LyricsText],
+    Text = render_text(TextEncoding, Content),
+    [<<TextEncoding:8/integer>>,
+     Language,
+     Text
+    ].
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Unit Test
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -682,6 +682,7 @@ test_filename(FileName, DoRenderTest) ->
 	{ok, P, Rest} ->
 	    io:format("~s:~n  ~P~n",
 		      [FileName, P,length(P#id3v2_tag.frames)+50]),
+	    msleep(1000),
 	    case DoRenderTest of
 		true ->
 		    R = render(P),
@@ -701,7 +702,7 @@ test_item(FileName) ->
     {ok, FileInfo} = file:read_file_info(FileName),
     case FileInfo#file_info.type of
 	regular ->
-	    test_filename(FileName, false);
+	    test_filename(FileName, true);
 	directory ->
 	    {ok, Filenames} = file:list_dir(FileName),
 	    [test_item(filename:join(FileName,Item)) || Item <- Filenames]

@@ -40,25 +40,24 @@
 
 -record(id3v2_frame,
 	{id, name, flags,
+	 orig_payload,
 	 payload}).
 
 
 -record(id3v2_generic_frame,
-	{size, data}).
+	{}).
 
 -record(id3v2_text_frame,
-	{size,
-	 text_encoding, text}).
+	{text_encoding, text}).
 
 -record(id3v2_uslt_frame,
-	{size,
-	 text_encoding,
+	{text_encoding,
+	 language,
 	 content_descriptor,
 	 lyrics_text}).
 
 -record(id3v2_apic_frame,
-	{size,
-	 text_encoding, description,
+	{text_encoding, description,
 	 mime_type, pic_type, img_data}).
 
 

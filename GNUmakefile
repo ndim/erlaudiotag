@@ -2,6 +2,7 @@
 TEST_FILE ?= does-not-exist.mp3
 
 ERL_MODS =
+ERL_MODS += unicode
 ERL_MODS += ndim_bpu
 ERL_MODS += id3v2
 ERL_MODS += ogg
@@ -25,7 +26,10 @@ CLEAN_FILES += $(ALL_BEAMS)
 check: all orig.dump id3parse-test.mp3 id3parse-test.dump
 	cmp id3parse-test.dump orig.dump || \
 		colordiff -u orig.dump id3parse-test.dump | less -r
-	cmp "$(TEST_FILE)" id3parse-test.mp3
+
+# The following test does not work with the new parser
+# which only reads the ID3v2 tag instead of the whole MP3 file.
+# cmp "$(TEST_FILE)" id3parse-test.mp3
 
 .PHONY: all
 all: $(ALL_BEAMS)
