@@ -404,6 +404,34 @@ parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 				text=Content}}|Acc]);
 parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
 		FrameFlags,
+		<<"USLT">> = FrameID,
+		FrameSize, FrameFlags,
+		<<TextEncoding:8/integer,
+		 Language:3/binary,
+		 Text/binary>> = _Data,
+		Rest, Acc) ->
+    io:format("  Text tag: ~s~n"
+	      "  Encoding: ~w~n"
+	      "  Language: ~w~n"
+	      ,
+	      [binary_to_list(FrameID),
+	       TextEncoding, Language]),
+    io:format("   Content: ~w ~P~n", [size(Text), Text, 100]),
+    Moo = [ContentDescriptor, LyricsText] = text_content(TextEncoding, Text),
+    io:format("   Content: ~P~n", [Moo, 100]),
+    io:format("   Lyrics: ~s~n", [<< <<C/utf8>> || C<-LyricsText>>]),
+    parse_frame(TagFlags,
+		Rest,
+		[#id3v2_frame{id=frameid_atom(FrameID),
+			      name=frameid_name(FrameID),
+			      flags=FrameFlags,
+			      payload=#id3v2_uslt_frame{
+				size=FrameSize,
+				text_encoding=TextEncoding,
+				content_descriptor=ContentDescriptor,
+				lyrics_text=LyricsText}}|Acc]);
+parse_frame_int(#id3v2_tag_flags{unsynch=_Unsync, footer=_HasFooter} = TagFlags,
+		FrameFlags,
 		<<"APIC">> = FrameID,
 		FrameSize, FrameFlags,
 		<<

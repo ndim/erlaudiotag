@@ -50,6 +50,12 @@
 	{size,
 	 text_encoding, text}).
 
+-record(id3v2_uslt_frame,
+	{size,
+	 text_encoding,
+	 content_descriptor,
+	 lyrics_text}).
+
 -record(id3v2_apic_frame,
 	{size,
 	 text_encoding, description,
