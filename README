@@ -1,0 +1,20 @@
+erlaudiotag - parse audio file metadata tags in Erlang
+Copyright (C) 2009 Hans Ulrich Niedermann <hun@n-dimensional.de>
+http://github.com/ndim/
+
+Immediate Goals:
+ * Get useful metadata information from audio files.
+ * Write original or modified metadata to audio files.
+ * Fix the brokenly tagged MP3 files from my podcast subscription list
+   so that they work properly with my digital audio player (DAP).
+
+Eventual Goals:
+ * Nice API
+ * Nice architecture
+ * Automatically fix MP3 files arriving in a certain directory
+   tree when they turn up (using inotify/FAM/gamin).
+ * Make the metadata useful for putting audio files onto
+   web pages.
+
+License: MIT
+
