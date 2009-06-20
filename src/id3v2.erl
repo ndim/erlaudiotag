@@ -695,8 +695,8 @@ test_filename(FileName, DoRenderTest) ->
 	    msleep(1000),
 	    case DoRenderTest of
 		true ->
-		    R = render(P),
-		    file:write_file("id3parse-test.mp3", [R,Rest]);
+		    RP = render(P),
+		    file:write_file("id3parse-test.mp3", [RP]);
 		false ->
 		    ok
 	    end,
