@@ -357,19 +357,6 @@ text_content(TextEncoding, Text, Acc) ->
 
 
 text_content(TextEncoding, Text) when is_binary(Text) ->
-    case false of
-	true ->
-	    io:format("text_content(~s,~n"
-		      "             ~P)~n",
-		      [case TextEncoding of
-			   0 -> "latin1";
-			   1 -> "utf16-with-BOM";
-			   2 -> "utf16be";
-			   3 -> "utf8"
-		       end,
-		       Text, 100]);
-	false -> ok
-    end,
     text_content(TextEncoding, Text, []).
 
 
@@ -532,7 +519,6 @@ parse_footer(#id3v2_tag_flags{unsynch=Unsync, footer=HasFooter} = _TagFlags,
     io:format("    Unsync: ~p~n"
 	      "    HasFooter: ~p~n",
 	      [Unsync, HasFooter]),
-    %% io:format("    Acc: ~p~n", [lists:reverse(Acc)]),
     {undefined, Bin}.
 
 
